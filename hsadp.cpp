@@ -3,38 +3,59 @@
 #include <unordered_map>
 #include <optional>
 
-using namespace std;
+#define _LOG std::cout
+#define _ENDLOG std::endl
+#define _vector std::vector
+#define _optional std::optional
+#define _unorderedMap std::unordered_map
+#define _pair std::pair
+#define _STR std::string
+#define _NULLOPT std::nullopt
+
+const int EMPTY=0xffffffff;
+unsigned char mask[]={0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01};
+#define tget(i) ( \
+  (t[(i)/8]&mask[(i)%8]) \
+  ? 1 \
+  : 0 )
+#define tset(i, b) \
+  t[(i)/8]=(b) \
+  ? (mask[(i)%8]|t[(i)/8]) \
+  : ((~mask[(i)%8])&t[(i)/8])
+
+#define chr(i) (cs==sizeof(int)?((int*)s)[i]:((unsigned char *)s)[i])
+
 
 // Function to create a hierarchical suffix tree and search for Q
-optional<vector<int>> createHierarchy(const string& S, const string& Q, int l, 
-                                      const vector<int>& SA, 
-                                      const optional<pair<string, vector<int>>>& valid_indices = nullopt, 
+_optional<_vector<int>> createHierarchy(const _STR& S, const _STR& Q, int l, 
+                                      const _vector<int>& SA, 
+                                      const _optional<_pair<_STR, _vector<int>>>& valid_indices = _NULLOPT, 
                                       int level = 0) {
-    cout << "Level: " << level << endl;
+    _LOG << "Level: " << level << _ENDLOG;
     
-    unordered_map<string, vector<int>> hier;
-    const vector<int>& suffix_array = valid_indices ? valid_indices->second : SA;
+    _unorderedMap<_STR, _vector<int>> hier;
+    const _vector<int>& suffix_array = valid_indices ? valid_indices->second : SA;
 
     int new_l = (level > 0) ? ((Q.length() < l + l) ? (l + (Q.length() - l)) : (l + l)) : l;
 
     // Build hierarchy tree
     for (int index : suffix_array) {
         if (index + new_l > S.length()) continue;  // Avoid out-of-bounds access
-        string present_suffix = S.substr(index, new_l);
+        _STR present_suffix = S.substr(index, new_l);
         hier[present_suffix].push_back(index);
     }
 
     // Optional: Print tree structure
-    cout << "Tree Structure: { ";
+    _LOG << "Tree Structure: { ";
     for (const auto& [key, values] : hier) {
-        cout << "\"" << key << "\": [ ";
-        for (int v : values) cout << v << " ";
-        cout << "] ";
+        _LOG << "\"" << key << "\": [ ";
+        for (int v : values) _LOG << v << " ";
+        _LOG << "] ";
     }
-    cout << "}" << endl;
+    _LOG << "}" << _ENDLOG;
 
     // Find valid indices for the next recursion
-    optional<pair<string, vector<int>>> next_valid_indices = nullopt;
+    _optional<_pair<_STR, _vector<int>>> next_valid_indices = _NULLOPT;
     for (const auto& [key, values] : hier) {
         // if (key != Q) {hier.erase(key);} // delete key to reduce hierarchy size and reduce space
         if (key == Q) return values;  // Found exact match
@@ -43,20 +64,26 @@ optional<vector<int>> createHierarchy(const string& S, const string& Q, int l,
 
     // No matching indices found
     if (!next_valid_indices) {
-        cout << "Last tree: ";
+        _LOG << "Last tree: ";
            // Optional: Print tree structure
-        cout << "Tree Structure: { ";
+        _LOG << "Tree Structure: { ";
         for (const auto& [key, values] : hier) {
-            cout << "\"" << key << "\": [ ";
-            for (int v : values) cout << v << " ";
-            cout << "] ";
+            _LOG << "\"" << key << "\": [ ";
+            for (int v : values) _LOG << v << " ";
+            _LOG << "] ";
         }
-        cout << "}" << endl;
-        cout << "No matching strings for this Query.\n";
-        return nullopt;
+        _LOG << "}" << _ENDLOG;
+        _LOG << "No matching _STRs for this Query.\n";
+        return _NULLOPT;
     }
 
     return createHierarchy(S, Q, new_l, SA, next_valid_indices, level + 1);
 }
 
 
+// -- TODO: --
+/*
+    -- read SA from binary file
+    -- the SA must already have been created, with the output in binary file format
+    -- how do we access the string
+*/
