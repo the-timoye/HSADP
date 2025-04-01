@@ -12,20 +12,6 @@
 #define _STR std::string
 #define _NULLOPT std::nullopt
 
-const int EMPTY=0xffffffff;
-unsigned char mask[]={0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01};
-#define tget(i) ( \
-  (t[(i)/8]&mask[(i)%8]) \
-  ? 1 \
-  : 0 )
-#define tset(i, b) \
-  t[(i)/8]=(b) \
-  ? (mask[(i)%8]|t[(i)/8]) \
-  : ((~mask[(i)%8])&t[(i)/8])
-
-#define chr(i) (cs==sizeof(int)?((int*)s)[i]:((unsigned char *)s)[i])
-
-
 // Function to create a hierarchical suffix tree and search for Q
 _optional<_vector<int>> createHierarchy(const _STR& S, const _STR& Q, int l, 
                                       const _vector<int>& SA, 
@@ -40,12 +26,15 @@ _optional<_vector<int>> createHierarchy(const _STR& S, const _STR& Q, int l,
 
     // Build hierarchy tree
     for (int index : suffix_array) {
-        if (index + new_l > S.length()) continue;  // Avoid out-of-bounds access
+        _LOG << index << _ENDLOG;
+
+        if ((index + new_l) > S.length()) continue;  // Avoid out-of-bounds access
+        _LOG << index << _ENDLOG;
         _STR present_suffix = S.substr(index, new_l);
         hier[present_suffix].push_back(index);
     }
 
-    // Optional: Print tree structure
+    // // Optional: Print tree structure
     _LOG << "Tree Structure: { ";
     for (const auto& [key, values] : hier) {
         _LOG << "\"" << key << "\": [ ";
