@@ -70,12 +70,24 @@ void printHierarchy(const unordered_map<size_t, vector<u_int32_t>>& hier, const 
     __LOG << "}" << __ENDLOG;
 }
 
-
+/*
+creates the hierarchy that aids the querying of a string
+Params:
+ * S - the string to be searched
+ * Q - the query string/parameter
+ * l - the pruning parameter
+ * suffixArray - defived from the SAIS algorithm
+ * n - the length of the string S
+ * m - the length/size of the query string Q
+ * validIndicies - the SA to be searched (useful upon pruning)
+ * level - tree level
+ Returns: <vector> 
+*/
 optional<vector<u_int32_t>> createHierarchy(
     const uchar* S
     , const uchar* Q
     , int l
-    , const u_int32_t* SA
+    , const u_int32_t* suffixArray
     , size_t n
     , size_t m
     , size_t SA_size
@@ -84,17 +96,20 @@ optional<vector<u_int32_t>> createHierarchy(
 ) {
     __LOG << "Level: " << level << __ENDLOG;
 
-    unordered_map<size_t, vector<u_int32_t>> hier; // TODO: find an alternative for size_t. it costs 8bytes!!
-    const u_int32_t* suffix_array = valid_indicies ? valid_indicies->second.data() : SA;
+    unordered_map<size_t, vector<u_int32_t>> hier; // LARGE: find an alternative for size_t. it costs 8bytes!!
+    const u_int32_t* SA = valid_indicies ? valid_indicies->second.data() : suffixArray;
     size_t SA_count = valid_indicies ? valid_indicies->second.size() : SA_size;
     int new_l = (level > 0) ? ((m < (l+l)) ? l + (m-l) : (l+l)) : l;
 
     for (size_t i=0; i < SA_count; i++) {
-        u_int32_t index = suffix_array[i];
-        if (index + new_l > n) continue;
+        u_int32_t index = SA[i];
+        if (index + new_l > n) continue; // ensures that there are no overheads. the number of characters in the index does not go beyond the size of the strings
         size_t hash = 0;
+
         memcpy(&hash, S+index, min(sizeof(size_t), (size_t)new_l));
-        hier[hash].push_back(index);
+        hier[hash].push_back(index); // LARGE: costs 56bytes!! too large
+        __LOG << "Size of H: " << sizeof(hash) << __ENDLOG;
+
     };
 
     printHierarchy(hier, S, new_l);
@@ -105,8 +120,8 @@ optional<vector<u_int32_t>> createHierarchy(
     memcpy(&qHash, Q, min(sizeof(size_t), (size_t)new_l));
 
     auto it = hier.find(qHash);
+    __LOG << "IT value: " << it->second[0] << __ENDLOG;
     if (it != hier.end()) {
-        __LOG << "String to COmpare: " << it->second[0] << " with: " << Q << __ENDLOG;
         if (memcmp((S + it->second[0]), Q, m) == 0) return it->second;    
         nextValidIndicies = {S+it->second[0], it->second};
     };
@@ -123,7 +138,7 @@ int main () {
     uchar* S = readS("input.txt", n);
     u_int32_t* SA = readSA("output", SA_size);
 
-    uchar Q[] = "TTAA";
+    uchar Q[] = "NAN";
     size_t m = sizeof(Q)-1;
     int l = 3;
 
