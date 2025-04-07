@@ -2,3 +2,5 @@
 hsadp
 *.ipynb
 execute.sh
+tutorial*
+/outputs
