@@ -1,162 +1,128 @@
-/*
-* An implementation of HSADP handling binary strings and binary SAs
-* Optimizations:
-    - hashes of size_t instead of strings. That is, 8bytes >> 32bytes
+/* Hierarchical Suffix Array with Dynamic Pruning
+* Uses a hash table as the hierarchy
+* if a match is found, returns the tree branch
+* If no match is found, returns the last hierarchy constructed
 */
-
 #include <iostream>
+#include <cstdint> // for the uints
+#include <cstring>
 #include <fstream>
-#include <unordered_map>
-#include <optional>
-#include <vector>
-#include <cstring> // used by memcpy
+
+
+#define MAX_BUCKETS 4096 // 2^12 buckets for hash indexing
+#define MAX_MATCHES 64 // SA indicies per bucket
+#define MAX_RESULTS 1024
 
 #define __LOG std::cout
-#define __LOGERR std::cerr
 #define __ENDLOG std::endl
-#define vector std::vector
-#define pair std::pair
-#define string std::string
-#define ios std::ios
-#define ifstream std::ifstream
-#define optional std::optional
-#define nullopt std::nullopt
-#define unordered_map std::unordered_map
-#define min std::min
 
 #define uchar unsigned char
 
-// reads the string as binary
-uchar* readS(const string& filename, size_t& size) {
-    ifstream file(filename, ios::binary | ios::ate);
-    if (!file) {
-        __LOGERR << "Error opening file" << filename << __ENDLOG;
-        exit(1);
-    };
-
-    size = file.tellg(); // find where in the stream the cursor is at
-    uchar* buffer = new uchar[size];
-    file.seekg(0, ios::beg);
-    file.read(reinterpret_cast<char*>(buffer), size);
-    file.close();
-    return buffer;
+struct Bucket {
+    uint32_t count;
+    uint32_t indicies[MAX_MATCHES];
 };
 
-u_int32_t* readSA(const string& filename, size_t& size) {
-    ifstream file(filename, ios::binary | ios::ate);
-    if (!file) {
-        __LOGERR << "Error opening file" << filename << __ENDLOG;
-        exit(1);
-    };
-
-    size = file.tellg() / sizeof(u_int32_t);
-    u_int32_t* buffer = new u_int32_t[size];
-    file.seekg(0, ios::beg);
-    file.read(reinterpret_cast<char*>(buffer), size * sizeof(u_int32_t));
-    file.close();
-    return buffer;
+struct Result {
+    uint32_t count;
+    uint32_t indicies[MAX_RESULTS];
 };
 
-void printHierarchy(const unordered_map<size_t, vector<u_int32_t>>& hier, const uchar* S, int substring_length) {
-    __LOG << "Tree Structure: { ";
-    for (const auto& [hash, values] : hier) {
-        if (!values.empty()) {
-            string reconstructed_substring(reinterpret_cast<const char*>(S + values[0]), substring_length);
-            __LOG << "\"" << reconstructed_substring << "\": [ ";
-            for (u_int32_t v : values) __LOG << v << " ";
-            __LOG << "] ";
+uint32_t hash_function(const uchar* data, int length) {
+    const uint32_t fnv_prime = 16777619u;
+    uint32_t hash = 2166136261u;
+    for (int i = 0; i < length; ++i) {
+        hash ^= data[i];
+        hash *= fnv_prime;
+    }
+    return hash % MAX_BUCKETS;
+};
+
+Result createHierarchy(uchar* S, uchar* Q, int l, uint32_t* SA, int n, int m, Result& results, uint32_t level= 0, uint32_t depth = 0, uint32_t* active_SA = nullptr, int activeSALength = 0) {
+    __LOG << "Level: " << level << __ENDLOG;
+    // TODO: make bucket size dynamic. It is expected to reduce per iteration;
+    Bucket buckets[MAX_BUCKETS];
+    const uint32_t* activeSA = active_SA ? active_SA : SA;
+    int SASize = active_SA ? activeSALength : n;
+
+    int new_l = (level > 0) ? ((m < l + l) ? (l + (m - l)) : (l + l)) : l;
+
+    for (int i=0; i<SASize; ++i) {
+        uint32_t idx = activeSA[i];
+        if (idx + new_l > n) continue;
+
+        uint32_t hash = hash_function(S+idx, new_l);
+
+        // how can we set a fixed size for the maximum number of buckets that can be created?
+        //    this will also measure the reduction in hierarchy size
+        Bucket& bucket = buckets[hash];
+
+        bucket.indicies[bucket.count++] = idx;
+    }
+
+    uint32_t target_hash = hash_function(Q, new_l);
+    Bucket& matchBucket = buckets[target_hash]; // doesx
+
+    bool partialFound = false;
+    static uint32_t next_SA[MAX_MATCHES]; // needed?? TODO: Reduce the 
+    int next_len = 0;
+
+    for (uint32_t i = 0; i < matchBucket.count; ++i) {
+        uint32_t position = matchBucket.indicies[i];
+        if (memcmp(S + position, Q, new_l) == 0) {
+            next_SA[next_len++] = position;
+            partialFound = true;
+            break;
         }
     }
-    __LOG << "}" << __ENDLOG;
+    if (partialFound) {
+        return createHierarchy(S, Q, new_l, SA, n, m, results, level + 1, depth + 1, next_SA, next_len);
+    }
+
+    for (uint32_t i=0; i<matchBucket.count; ++i) {
+        uint32_t position = matchBucket.indicies[i];
+        if (position + m <= (uint32_t)n && memcmp(S + position, Q, m) == 0) {
+            if (results.count < MAX_RESULTS)
+                results.indicies[results.count++] = position;
+        }
+    }
+    return results;
 }
 
-/*
-creates the hierarchy that aids the querying of a string
-Params:
- * S - the string to be searched
- * Q - the query string/parameter
- * l - the pruning parameter
- * suffixArray - defived from the SAIS algorithm
- * n - the length of the string S
- * m - the length/size of the query string Q
- * validIndicies - the SA to be searched (useful upon pruning)
- * level - tree level
- Returns: <vector> 
-*/
-optional<vector<u_int32_t>> createHierarchy(
-    const uchar* S
-    , const uchar* Q
-    , int l
-    , const u_int32_t* suffixArray
-    , size_t n
-    , size_t m
-    , size_t SA_size
-    , const optional<pair<const uchar*, vector<u_int32_t>>> valid_indicies = nullopt
-    , int level = 0
-) {
-    __LOG << "Level: " << level << __ENDLOG;
 
-    unordered_map<size_t, vector<u_int32_t>> hier; // LARGE: find an alternative for size_t. it costs 8bytes!!
-    const u_int32_t* SA = valid_indicies ? valid_indicies->second.data() : suffixArray;
-    size_t SA_count = valid_indicies ? valid_indicies->second.size() : SA_size;
-    int new_l = (level > 0) ? ((m < (l+l)) ? l + (m-l) : (l+l)) : l;
+int main() {
+    std::ifstream fs("input.txt", std::ios::binary);
+    std::ifstream safs("output", std::ios::binary);
 
-    for (size_t i=0; i < SA_count; i++) {
-        u_int32_t index = SA[i];
-        if (index + new_l > n) continue; // ensures that there are no overheads. the number of characters in the index does not go beyond the size of the strings
-        size_t hash = 0;
+    fs.seekg(0, std::ios::end);
+    int n = fs.tellg();
+    fs.seekg(0, std::ios::beg);
 
-        memcpy(&hash, S+index, min(sizeof(size_t), (size_t)new_l));
-        hier[hash].push_back(index); // LARGE: costs 56bytes!! too large
-        __LOG << "Size of H: " << sizeof(hash) << __ENDLOG;
+    uchar* S = new uchar[n];
+    fs.read((char*)S, n);
+    fs.close();
 
-    };
+    safs.seekg(0, std::ios::end);
+    int SA_len = safs.tellg() / sizeof(uint32_t);
+    safs.seekg(0, std::ios::beg);
 
-    printHierarchy(hier, S, new_l);
+    uint32_t* SA = new uint32_t[SA_len];
+    safs.read((char*)SA, SA_len * sizeof(uint32_t));
+    safs.close();
 
+    uchar Q[] = "ANAA";
+    Result matches = {};
+    createHierarchy(S, Q, 2, SA, n, sizeof(Q) -1, matches);
 
-    optional<pair<const uchar*, vector<u_int32_t>>> nextValidIndicies = nullopt;
-    size_t qHash = 0;
-    memcpy(&qHash, Q, min(sizeof(size_t), (size_t)new_l));
-
-    auto it = hier.find(qHash);
-    __LOG << "IT value: " << it->second[0] << __ENDLOG;
-    if (it != hier.end()) {
-        if (memcmp((S + it->second[0]), Q, m) == 0) return it->second;    
-        nextValidIndicies = {S+it->second[0], it->second};
-    };
-
-    if(!nextValidIndicies) {
-        __LOG << "No matching string found!" << __ENDLOG;
-        return nullopt;
+    if (matches.count > 0) {
+        __LOG << "Matches: " << __ENDLOG;
+        for (uint32_t i=0; i<matches.count; ++i) {
+            __LOG << matches.indicies[i] << " ";
+        }
+        __LOG << __ENDLOG;
+    } else {
+        __LOG << "No match found:" << __ENDLOG;
     }
-    return createHierarchy(S, Q, new_l, SA, n, m, SA_size, nextValidIndicies, level+1);
-};
-
-int main () {
-    size_t n, SA_size;
-    uchar* S = readS("input.txt", n);
-    u_int32_t* SA = readSA("output", SA_size);
-
-    uchar Q[] = "NAN";
-    size_t m = sizeof(Q)-1;
-    int l = 3;
-
-    // Call function
-	clock_t start, finish;
-	double  duration;
-	start = clock();
-    optional<vector<u_int32_t>> result = createHierarchy(S, Q, l, SA, n, m, SA_size);
-	finish = clock();
-	duration = (double)(finish - start) / CLOCKS_PER_SEC;
-
-	std::cout << "Time: " << duration << std::endl;
-    if (result) {
-        for (u_int32_t index : *result) __LOG << index << __ENDLOG;
-    } else {__LOG << "No Exact Match Found." << __ENDLOG;};
-
-    delete[] S;
-    delete[] SA;
 
     return 0;
 }
