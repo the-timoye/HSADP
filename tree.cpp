@@ -55,7 +55,11 @@ Edge* createEdge(std::string label, Node* from, Node* to) {
     return edge;
 };
 
-
+// TODO:
+/*
+    Represent the node values as an array of integers
+    Represent the edge labels as char
+*/
 int main() {
     // need a loop to create all the possible nodes for that level
     Node* rootNode = createNode(1234567);
