@@ -2,7 +2,7 @@
 #include <iostream>
 #include <cstring>
 
-#define MAX_NODES 12
+#define MAX_NODES 19
 #define MAX_EDGES 10
 #define MAX_INDEXES 50
 
@@ -25,9 +25,6 @@ struct Hierarchy {
     Node nodePool[MAX_NODES];
     int nodeIndex = 0;
 };
-
-
-
 
 void printHierarchy(Node* rootNode) {
     if (!rootNode) return;
@@ -60,16 +57,21 @@ Node* createNode(int value) {
         std::cerr << "Error: Maximum number of nodes (" << MAX_NODES << ") exceeded!" << std::endl;
         std::exit(1); // or throw an exception
     }
-    Node* node = &root->nodePool[root->nodeIndex++]; 
+    Node* node = &root->nodePool[root->nodeIndex]; 
     node->index = root->nodeIndex;
     node->indexCount = 0;   // Important: reset these, in case re-used
     node->edgeCount = 0;
     node->value[node->indexCount] = value;
     node->indexCount++;
+    root->nodeIndex++;
     return node;
 }
 
 void addIndex(Node* node, int value) {
+    if (node->indexCount >= MAX_INDEXES) {
+        std::cerr << "Error: Maximum indexes exceeded!" << std::endl;
+        std::exit(1);
+    }
     node->value[node->indexCount] = value;
     node->indexCount++;
 };
@@ -89,10 +91,9 @@ Node* buildHierarchy(std::string S, int level, int SAsize, int *SA, size_t n, si
     std::cout << "Size of SA: " << SAsize << std::endl;
 
 
-    Node* rootNode = createNode(-1); // dummy root node    
+    Node* rootNode = createNode(-1); // dummy root node   
     if (level > 0) {
         rootNode->indexCount = SAsize;
-        std::cout << "ppp " << rootNode->indexCount*sizeof(int) << std::endl;
         memcpy(rootNode->value, SA, rootNode->indexCount*sizeof(int));
     }
 
@@ -128,13 +129,15 @@ Edge* createHierarchy(std::string S, std::string Q, int *SA, int l, size_t n, si
 
     Edge* edgeFound = nullptr;
 
-    for (int i=0; i<rootNode->edgeCount; i++) {
-        if (edgeFound) {break;};
-        if (rootNode->edges[i]->label == Q.substr(0, newL)) {
-            edgeFound = rootNode->edges[i];
-        } else {
-            // root->nodePool[rootNode->edges[i]->to->index] = {};
-            delete rootNode->edges[i];
+    if (rootNode->edgeCount > 0) {
+        for (int i=0; i<rootNode->edgeCount; i++) {
+            if (edgeFound) {break;};
+            if (rootNode->edges[i]->label == Q.substr(0, newL)) {
+                edgeFound = rootNode->edges[i];
+            } else {
+                // root->nodePool[rootNode->edges[i]->to->index] = {};
+                rootNode->edges[i] = nullptr;
+            }
         }
     }
 
