@@ -17,7 +17,8 @@ struct Node {
 };
 
 struct Edge {
-    std::string label;
+    const char* label;
+    int labelLength;
     Node* to;
 };
 
@@ -28,27 +29,26 @@ struct Hierarchy {
 
 void printHierarchy(Node* rootNode) {
     if (!rootNode) return;
-    std::cout << "Root Node: " ;
-    for (int i=0; i<rootNode->indexCount; ++i) {
+    std::cout << "Root Node: ";
+    for (int i = 0; i < rootNode->indexCount; ++i) {
         std::cout << rootNode->value[i] << " ";
     }
     std::cout << std::endl;
 
-    for (int i=0; i<rootNode->edgeCount; ++i) {
+    for (int i = 0; i < rootNode->edgeCount; ++i) {
         std::cout << "    ------- ";
-        std::cout << rootNode->edges[i]->label;
+        std::cout.write(rootNode->edges[i]->label, rootNode->edges[i]->labelLength); // FIXED
         std::cout << "; Value Count: " << rootNode->edges[i]->to->indexCount;
-
-        std::cout << "------- ";
-    
+        std::cout << " ------- ";
 
         std::cout << "Nodes Values: ";
-        for (int j=0; j<rootNode->edges[i]->to->indexCount; ++j) {  
-           std::cout << rootNode->edges[i]->to->value[j] << " ";
-        }    
+        for (int j = 0; j < rootNode->edges[i]->to->indexCount; ++j) {
+            std::cout << rootNode->edges[i]->to->value[j] << " ";
+        }
         std::cout << std::endl;
     }
-};
+}
+
 
 Hierarchy* root = new Hierarchy;
 
@@ -76,9 +76,10 @@ void addIndex(Node* node, int value) {
     node->indexCount++;
 };
 
-Edge* createEdge(std::string label, Node* from, Node* to) {
+Edge* createEdge(const char* label, int labelLength,  Node* from, Node* to) {
     Edge* edge = new Edge;    
     edge->label = label;
+    edge->labelLength = labelLength;
     from->edges[from->edgeCount] = edge;
     from->edgeCount++;    
     edge->to = to;
@@ -103,7 +104,8 @@ Node* buildHierarchy(std::string S, int level, int SAsize, int *SA, size_t n, si
 
         bool found = false;
         for (int j=0; j<rootNode->edgeCount; j++) {
-            if (S.substr(SA[i], l) == rootNode->edges[j]->label) {
+            if (rootNode->edges[j]->labelLength == l &&
+                strncmp(rootNode->edges[j]->label, &S[SA[i]], l) == 0) {
                 found = true;
                 addIndex(rootNode->edges[j]->to, SA[i]);
             }
@@ -111,7 +113,7 @@ Node* buildHierarchy(std::string S, int level, int SAsize, int *SA, size_t n, si
 
         if (!found) {
             Node* node = createNode(SA[i]);
-            createEdge(S.substr(SA[i], l), rootNode, node);
+            createEdge(&S[SA[i]], l, rootNode, node);
         }
     };    
     printHierarchy(rootNode); 
@@ -132,10 +134,12 @@ Edge* createHierarchy(std::string S, std::string Q, int *SA, int l, size_t n, si
     if (rootNode->edgeCount > 0) {
         for (int i=0; i<rootNode->edgeCount; i++) {
             if (edgeFound) {break;};
-            if (rootNode->edges[i]->label == Q.substr(0, newL)) {
+            if (rootNode->edges[i]->labelLength == newL &&
+                strncmp(rootNode->edges[i]->label, &Q[0], newL) == 0) {
                 edgeFound = rootNode->edges[i];
             } else {
                 // root->nodePool[rootNode->edges[i]->to->index] = {};
+                delete rootNode->edges[i];
                 rootNode->edges[i] = nullptr;
             }
         }
@@ -153,9 +157,13 @@ Edge* createHierarchy(std::string S, std::string Q, int *SA, int l, size_t n, si
 
 int main() {
 
-    std::string S = "ATGCCTGATGC$";
-    std::string Q = "TGC";
-    int SA[] = {11, 7, 0, 10, 3, 4, 6, 9, 2, 5, 8, 1};
+    // std::string S = "ATGCCTGATGC$";
+    // std::string Q = "TGC";
+    // int SA[] = {11, 7, 0, 10, 3, 4, 6, 9, 2, 5, 8, 1};
+
+    std::string S = "BANANA$";
+    std::string Q = "ANA";
+    int SA[] = {6, 5, 3, 1, 0, 4, 2};
 
     int SASize = sizeof(SA)/sizeof(SA[0]);
 
