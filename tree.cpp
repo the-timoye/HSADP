@@ -2,9 +2,15 @@
 #include <iostream>
 #include <cstring>
 
-#define MAX_NODES 19
-#define MAX_EDGES 10
-#define MAX_INDEXES 50
+#include <fcntl.h>      // open
+#include <unistd.h>     // read, close
+#include <sys/stat.h>   // fstat
+#include <sys/types.h>  // fstat
+#include <cstdlib>
+
+#define MAX_NODES 2000
+#define MAX_EDGES 2000
+#define MAX_INDEXES 2000
 
 struct Edge;
 
@@ -49,6 +55,33 @@ void printHierarchy(Node* rootNode) {
     }
 }
 
+int* loadSuffixArray(const char* filename, int& length) {
+    int fd = open(filename, O_RDONLY);
+    if (fd < 0) return nullptr;
+
+    struct stat st;
+    if (fstat(fd, &st) != 0) {
+        close(fd);
+        return nullptr;
+    }
+
+    length = st.st_size / sizeof(int);
+    int* SA = (int*)malloc(st.st_size);
+    if (!SA) {
+        close(fd);
+        return nullptr;
+    }
+
+    ssize_t bytesRead = read(fd, SA, st.st_size);
+    close(fd);
+
+    if (bytesRead != st.st_size) {
+        free(SA);
+        return nullptr;
+    }
+
+    return SA;
+}
 
 Hierarchy* root = new Hierarchy;
 
@@ -87,7 +120,7 @@ Edge* createEdge(const char* label, int labelLength,  Node* from, Node* to) {
 };
 
 
-Node* buildHierarchy(std::string S, int level, int SAsize, int *SA, size_t n, size_t m, int l) {
+Node* buildHierarchy(const char* S, int level, int SAsize, int *SA, size_t n, size_t m, int l) {
     std::cout << "------------------- HIERARCHY ------------------- Level " << level << std::endl;
     std::cout << "Size of SA: " << SAsize << std::endl;
 
@@ -105,7 +138,7 @@ Node* buildHierarchy(std::string S, int level, int SAsize, int *SA, size_t n, si
         bool found = false;
         for (int j=0; j<rootNode->edgeCount; j++) {
             if (rootNode->edges[j]->labelLength == l &&
-                strncmp(rootNode->edges[j]->label, &S[SA[i]], l) == 0) {
+                strncmp(rootNode->edges[j]->label, S+SA[i], l) == 0) {
                 found = true;
                 addIndex(rootNode->edges[j]->to, SA[i]);
             }
@@ -113,14 +146,14 @@ Node* buildHierarchy(std::string S, int level, int SAsize, int *SA, size_t n, si
 
         if (!found) {
             Node* node = createNode(SA[i]);
-            createEdge(&S[SA[i]], l, rootNode, node);
+            createEdge(S+SA[i], l, rootNode, node);
         }
     };    
     printHierarchy(rootNode); 
     return rootNode;
 }
 
-Edge* createHierarchy(std::string S, std::string Q, int *SA, int l, size_t n, size_t m, int SAsize, int level) {
+Edge* createHierarchy(const char* S, const char* Q, int *SA, int l, size_t n, size_t m, int SAsize, int level) {
 
     int newL = (level > 0) ? ((m < l + l) ? (l + (m - l)) : (l + l)) : l;
 
@@ -135,7 +168,7 @@ Edge* createHierarchy(std::string S, std::string Q, int *SA, int l, size_t n, si
         for (int i=0; i<rootNode->edgeCount; i++) {
             if (edgeFound) {break;};
             if (rootNode->edges[i]->labelLength == newL &&
-                strncmp(rootNode->edges[i]->label, &Q[0], newL) == 0) {
+                strncmp(rootNode->edges[i]->label, Q, newL) == 0) {
                 edgeFound = rootNode->edges[i];
             } else {
                 // root->nodePool[rootNode->edges[i]->to->index] = {};
@@ -157,18 +190,28 @@ Edge* createHierarchy(std::string S, std::string Q, int *SA, int l, size_t n, si
 
 int main() {
 
-    // std::string S = "ATGCCTGATGC$";
-    // std::string Q = "TGC";
-    // int SA[] = {11, 7, 0, 10, 3, 4, 6, 9, 2, 5, 8, 1};
+    // Reading S from file
+    FILE* f = fopen("input.txt", "rb");
+    fseek(f, 0, SEEK_END);
+    size_t n = ftell(f);
+    rewind(f);
+    char* S = new char[n + 1];  // +1 for safety null if needed
+    fread(S, 1, n, f);
+    fclose(f);
 
-    std::string S = "BANANA$";
-    std::string Q = "ANA";
-    int SA[] = {6, 5, 3, 1, 0, 4, 2};
+    // Reading Q from file
+    FILE* fQ = fopen("Q.txt", "rb");
+    fseek(fQ, 0, SEEK_END);
+    size_t m = ftell(fQ);
+    rewind(fQ);
+    char* Q = new char[m + 1];  // +1 for safety null if needed
+    fread(Q, 1, m, fQ);
+    fclose(fQ);
 
-    int SASize = sizeof(SA)/sizeof(SA[0]);
+    int SASize;
+    int* SA = loadSuffixArray("rel", SASize);
+    std::cout << "------------------- SA Size -------------------" << SASize<< std::endl;
 
-    int n = S.length();
-    int m = Q.length();
     int l = 2;
     int level = 0;
 
@@ -179,6 +222,8 @@ int main() {
     }
 
     delete root;
+    delete[] S;
+    delete[] Q;
 
     std::cout <<"Done! " << std::endl;
     return 0;
