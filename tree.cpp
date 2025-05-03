@@ -1,6 +1,8 @@
 #include <fstream>
 #include <iostream>
 #include <cstring>
+#include <stdint.h>
+
 
 #include <fcntl.h>      // open
 #include <unistd.h>     // read, close
@@ -8,52 +10,27 @@
 #include <sys/types.h>  // fstat
 #include <cstdlib>
 
-#define MAX_NODES 2000
-#define MAX_EDGES 2000
-#define MAX_INDEXES 2000
 
 struct Edge;
 
 struct Node {
     int index;
-    int value[MAX_INDEXES];
+    int* values;
     int indexCount = 0;
     int edgeCount = 0;
-    Edge* edges[MAX_EDGES];
+    int edgeCapacity = 0;
+    Edge** edges = nullptr;
 };
 
 struct Edge {
-    const char* label;
-    int labelLength;
+    uint32_t label;
+    uint8_t labelLength;
     Node* to;
 };
 
 struct Hierarchy {
-    Node nodePool[MAX_NODES];
     int nodeIndex = 0;
 };
-
-void printHierarchy(Node* rootNode) {
-    if (!rootNode) return;
-    std::cout << "Root Node: ";
-    for (int i = 0; i < rootNode->indexCount; ++i) {
-        std::cout << rootNode->value[i] << " ";
-    }
-    std::cout << std::endl;
-
-    for (int i = 0; i < rootNode->edgeCount; ++i) {
-        std::cout << "    ------- ";
-        std::cout.write(rootNode->edges[i]->label, rootNode->edges[i]->labelLength); // FIXED
-        std::cout << "; Value Count: " << rootNode->edges[i]->to->indexCount;
-        std::cout << " ------- ";
-
-        std::cout << "Nodes Values: ";
-        for (int j = 0; j < rootNode->edges[i]->to->indexCount; ++j) {
-            std::cout << rootNode->edges[i]->to->value[j] << " ";
-        }
-        std::cout << std::endl;
-    }
-}
 
 int* loadSuffixArray(const char* filename, int& length) {
     int fd = open(filename, O_RDONLY);
@@ -82,53 +59,91 @@ int* loadSuffixArray(const char* filename, int& length) {
 
     return SA;
 }
+void printHierarchy(Node* rootNode, Hierarchy* hier) {
+    if (!rootNode) return;
+    
+    std::cout << "Edge Count: ";
+    std::cout << rootNode->edgeCount;
+    std::cout << " Global Node Count: ";
+    std::cout << hier->nodeIndex;
+    std::cout << "; \nRoot Node: ";
 
-Hierarchy* root = new Hierarchy;
 
-Node* createNode(int value) {
-    if (root->nodeIndex >= MAX_NODES) {
-        std::cerr << "Error: Maximum number of nodes (" << MAX_NODES << ") exceeded!" << std::endl;
-        std::exit(1); // or throw an exception
+    for (int i = 0; i < rootNode->indexCount; ++i) {
+        std::cout << rootNode->values[i] << " ";
     }
-    Node* node = &root->nodePool[root->nodeIndex]; 
-    node->index = root->nodeIndex;
+    std::cout << std::endl;
+
+    for (int i = 0; i < rootNode->edgeCount; ++i) {
+        std::cout << "    ------- ";
+        // std::cout.write(rootNode->edges[i]->label, rootNode->edges[i]->labelLength); // FIXED
+        std::cout << "; Values Count: " << rootNode->edges[i]->to->indexCount;
+        std::cout << " ------- ";
+
+        std::cout << "Nodes Valuess: ";
+        for (int j = 0; j < rootNode->edges[i]->to->indexCount; ++j) {
+            std::cout << rootNode->edges[i]->to->values[j] << " ";
+        }
+        std::cout << std::endl;
+    }
+}
+Node* createNode(int values, Hierarchy* hier, int n) {
+    if (hier->nodeIndex >= n/2) {
+        std::cerr << "Error: Maximum number of nodes (" << n/2 << ") exceeded!" << std::endl;
+    }
+    Node* node = new Node; 
+    node->index = hier->nodeIndex++;
     node->indexCount = 0;   // Important: reset these, in case re-used
     node->edgeCount = 0;
-    node->value[node->indexCount] = value;
+    node->values = new int[n];
+    node->values[node->indexCount] = values;
     node->indexCount++;
-    root->nodeIndex++;
+    node->edgeCapacity = 4;
+    node->edges = new Edge*[node->edgeCapacity];
     return node;
 }
 
-void addIndex(Node* node, int value) {
-    if (node->indexCount >= MAX_INDEXES) {
-        std::cerr << "Error: Maximum indexes exceeded!" << std::endl;
-        std::exit(1);
+void addIndex(Node* node, int values, int n) {
+    if (node->indexCount >= (n/2)) {
+        std::cout << "Maximum indexes exceeded!" << std::endl;
+        node->indexCount = (n);
     }
-    node->value[node->indexCount] = value;
+    node->values[node->indexCount] = values;
     node->indexCount++;
 };
 
-Edge* createEdge(const char* label, int labelLength,  Node* from, Node* to) {
-    Edge* edge = new Edge;    
-    edge->label = label;
-    edge->labelLength = labelLength;
-    from->edges[from->edgeCount] = edge;
-    from->edgeCount++;    
+void addEdge(Node* from, Edge* edge) {
+    if (from->edgeCount >= from->edgeCapacity) {
+        int newCap = from->edgeCapacity*2;
+        Edge** newEdges = new Edge*[newCap];
+        std::memcpy(newEdges, from->edges, from->edgeCount*sizeof(Edge*));
+        delete[] from->edges;
+        from->edges = newEdges;
+        from->edgeCapacity = newCap;
+    }
+    from->edges[from->edgeCount++] = edge;
+}
+
+Edge* createEdge(int startIndex, int labelLength,  Node* from, Node* to) {
+    Edge* edge = new Edge();    
+    edge->label = startIndex;
+    edge->labelLength = labelLength;   
     edge->to = to;
+    addEdge(from, edge);
     return edge;
 };
 
 
-Node* buildHierarchy(const char* S, int level, int SAsize, int *SA, size_t n, size_t m, int l) {
+Node* buildHierarchy(const char* S, int level, int SAsize, int *SA, size_t n, size_t m, int l, Hierarchy* hier) {
     std::cout << "------------------- HIERARCHY ------------------- Level " << level << std::endl;
     std::cout << "Size of SA: " << SAsize << std::endl;
 
 
-    Node* rootNode = createNode(-1); // dummy root node   
+    Node* rootNode = createNode(-1, hier, n); // dummy root node   
     if (level > 0) {
         rootNode->indexCount = SAsize;
-        memcpy(rootNode->value, SA, rootNode->indexCount*sizeof(int));
+        memcpy(rootNode->values, SA, rootNode->indexCount*sizeof(int));
+        delete[] SA;
     }
 
 
@@ -138,57 +153,71 @@ Node* buildHierarchy(const char* S, int level, int SAsize, int *SA, size_t n, si
         bool found = false;
         for (int j=0; j<rootNode->edgeCount; j++) {
             if (rootNode->edges[j]->labelLength == l &&
-                strncmp(rootNode->edges[j]->label, S+SA[i], l) == 0) {
+                strncmp(S+rootNode->edges[j]->label, S+SA[i], l) == 0) {
                 found = true;
-                addIndex(rootNode->edges[j]->to, SA[i]);
+                addIndex(rootNode->edges[j]->to, SA[i], n);
             }
         }
 
         if (!found) {
-            Node* node = createNode(SA[i]);
-            createEdge(S+SA[i], l, rootNode, node);
+            Node* node = createNode(SA[i], hier, n);
+            createEdge(SA[i], l, rootNode, node);
         }
     };    
-    printHierarchy(rootNode); 
     return rootNode;
 }
 
-Edge* createHierarchy(const char* S, const char* Q, int *SA, int l, size_t n, size_t m, int SAsize, int level) {
+Edge* createHierarchy(const char* S, const char* Q, int *SA, int l, size_t n, size_t m, int SAsize, int level, Hierarchy* hier) {
 
     int newL = (level > 0) ? ((m < l + l) ? (l + (m - l)) : (l + l)) : l;
 
-    Node* rootNode = buildHierarchy(S, level, SAsize, SA, n, m, newL);
-
-    // PHASE 2: Search
-    // search the hierarchy to compare edge labels with the value of Q.
+    Node* rootNode = buildHierarchy(S, level, SAsize, SA, n, m, newL, hier);
 
     Edge* edgeFound = nullptr;
 
+    std::cout << "------------------- SEARCHING ------------------- Level " << level << std::endl;
+
     if (rootNode->edgeCount > 0) {
         for (int i=0; i<rootNode->edgeCount; i++) {
-            if (edgeFound) {break;};
+            // if (edgeFound) {
+            //     delete[] rootNode->values;
+            //     delete[] rootNode->edges;
+            //     delete rootNode;
+            //     break;
+            // };
             if (rootNode->edges[i]->labelLength == newL &&
-                strncmp(rootNode->edges[i]->label, Q, newL) == 0) {
+                strncmp(S+rootNode->edges[i]->label, Q, newL) == 0) {
                 edgeFound = rootNode->edges[i];
-            } else {
-                // root->nodePool[rootNode->edges[i]->to->index] = {};
+            }else {
+                delete[] rootNode->edges[i]->to->values;
+                delete[] rootNode->edges[i]->to->edges;
+                delete rootNode->edges[i]->to;
                 delete rootNode->edges[i];
-                rootNode->edges[i] = nullptr;
             }
         }
     }
 
     if ((m > newL) && (edgeFound)) {
         std::cout << "recurse " <<std::endl;
-        int* nextSA = edgeFound->to->value;
+        int* nextSA = edgeFound->to->values;
         int SASize = edgeFound->to->indexCount;
-        return createHierarchy(S, Q, nextSA, newL, n, m, SASize, level+1);
-    }
-    
+        delete[] rootNode->values;
+        delete[] rootNode->edges;
+        delete rootNode;
+
+        return createHierarchy(S, Q, nextSA, newL, n, m, SASize, level+1, hier);
+    }    
+
+    delete[] rootNode->edges;
+    delete[] rootNode->values;
+    delete rootNode;
+
     return edgeFound;
 };
 
 int main() {
+
+    Hierarchy* hier = new Hierarchy;
 
     // Reading S from file
     FILE* f = fopen("input.txt", "rb");
@@ -208,22 +237,39 @@ int main() {
     fread(Q, 1, m, fQ);
     fclose(fQ);
 
+    // char S[] = "BANANA$";
+    // char Q[] = "ANA";
+    // int SA[] = {6, 5, 3, 1, 0, 4, 2};
+
+    
+
+    // int n = 7;
+    // int m = 3;
     int SASize;
     int* SA = loadSuffixArray("rel", SASize);
-    std::cout << "------------------- SA Size -------------------" << SASize<< std::endl;
+    std::cout << "------------------- S Size -------------------" << n << std::endl;
 
-    int l = 2;
+    int l = 3;
     int level = 0;
 
-    Edge* result = createHierarchy(S, Q, SA, l, n, m, SASize, level);
-    if (result) {
-        std::cout << "------------------- RESULT -------------------" << result->to->indexCount << std::endl;
-        printHierarchy(result->to);
-    }
+    clock_t start, finish;
+	double  duration;
+	start = clock();
 
-    delete root;
+    Edge* result = createHierarchy(S, Q, SA, l, n, m, SASize, level, hier);
+
+	finish = clock();
+	duration = (double)(finish - start) / CLOCKS_PER_SEC;
+
+    if (result) {
+        std::cout << "------------------- RESULT ------------------- " << duration << " seconds" << std::endl;
+        printHierarchy(result->to, hier);         
+    }
+    delete result->to;
+    delete hier;
     delete[] S;
     delete[] Q;
+    delete[] SA;
 
     std::cout <<"Done! " << std::endl;
     return 0;
